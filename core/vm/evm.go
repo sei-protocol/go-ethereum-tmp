@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -71,11 +70,11 @@ type BlockContext struct {
 // All fields can change between transactions.
 type TxContext struct {
 	// Message information
-	Origin       common.Address      // Provides information for ORIGIN
-	GasPrice     *big.Int            // Provides information for GASPRICE (and is used to zero the basefee if NoBaseFee is set)
-	BlobHashes   []common.Hash       // Provides information for BLOBHASH
-	BlobFeeCap   *big.Int            // Is used to zero the blobbasefee if NoBaseFee is set
-	AccessEvents *state.AccessEvents // Capture all state accesses for this tx
+	Origin       common.Address // Provides information for ORIGIN
+	GasPrice     *big.Int       // Provides information for GASPRICE (and is used to zero the basefee if NoBaseFee is set)
+	BlobHashes   []common.Hash  // Provides information for BLOBHASH
+	BlobFeeCap   *big.Int       // Is used to zero the blobbasefee if NoBaseFee is set
+	AccessEvents *AccessEvents  // Capture all state accesses for this tx
 }
 
 // EVM is the Ethereum Virtual Machine base object and provides
@@ -120,7 +119,7 @@ type EVM struct {
 // database and several configs. It meant to be used throughout the entire
 // state transition of a block, with the transaction context switched as
 // needed by calling evm.SetTxContext.
-func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainConfig, config Config) *EVM {
+func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainConfig, config Config, customPrecompiles map[common.Address]PrecompiledContract) *EVM {
 	evm := &EVM{
 		Context:     blockCtx,
 		StateDB:     statedb,
@@ -128,9 +127,20 @@ func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainCon
 		chainConfig: chainConfig,
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time),
 	}
-	evm.precompiles = activePrecompiledContracts(evm.chainRules)
+	for addr, builtinPrecompile := range activePrecompiledContracts(evm.chainRules) {
+		evm.precompiles[addr] = builtinPrecompile
+	}
+	for addr, p := range customPrecompiles {
+		if _, exists := evm.precompiles[addr]; !exists {
+			evm.precompiles[addr] = p
+		}
+	}
 	evm.interpreter = NewEVMInterpreter(evm)
 	return evm
+}
+
+func (evm *EVM) GetInterpreter() *EVMInterpreter {
+	return evm.interpreter
 }
 
 // SetPrecompiles sets the precompiled contracts for the EVM.
@@ -144,7 +154,7 @@ func (evm *EVM) SetPrecompiles(precompiles PrecompiledContracts) {
 // This is not threadsafe and should only be done very cautiously.
 func (evm *EVM) SetTxContext(txCtx TxContext) {
 	if evm.chainRules.IsEIP4762 {
-		txCtx.AccessEvents = state.NewAccessEvents(evm.StateDB.PointCache())
+		txCtx.AccessEvents = NewAccessEvents(evm.StateDB.PointCache())
 	}
 	evm.TxContext = txCtx
 }
@@ -212,7 +222,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
 
 	if isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		ret, gas, err = RunPrecompiledContract(p, evm, caller.Address(), caller.Address(), input, gas, value.ToBig(), evm.Config.Tracer, evm.interpreter.readOnly, false)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -279,7 +289,7 @@ func (evm *EVM) CallCode(caller ContractRef, addr common.Address, input []byte, 
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		ret, gas, err = RunPrecompiledContract(p, evm, caller.Address(), caller.Address(), input, gas, value.ToBig(), evm.Config.Tracer, evm.interpreter.readOnly, true)
 	} else {
 		addrCopy := addr
 		// Initialise a new contract and set the code that is to be used by the EVM.
@@ -327,7 +337,10 @@ func (evm *EVM) DelegateCall(caller ContractRef, addr common.Address, input []by
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		// NOTE: caller must, at all times be a contract. It should never happen
+		// that caller is something other than a Contract.
+		parent := caller.(*Contract)
+		ret, gas, err = RunPrecompiledContract(p, evm, parent.CallerAddress, caller.Address(), input, gas, nil, evm.Config.Tracer, evm.interpreter.readOnly, true)
 	} else {
 		addrCopy := addr
 		// Initialise a new contract and make initialise the delegate values
@@ -378,7 +391,7 @@ func (evm *EVM) StaticCall(caller ContractRef, addr common.Address, input []byte
 	evm.StateDB.AddBalance(addr, new(uint256.Int), tracing.BalanceChangeTouchAccount)
 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		ret, gas, err = RunPrecompiledContract(p, evm, caller.Address(), caller.Address(), input, gas, nil, evm.Config.Tracer, true, false)
 	} else {
 		// At this point, we use a copy of address. If we don't, the go compiler will
 		// leak the 'contract' to the outer scope, and make allocation for 'contract'
@@ -594,6 +607,39 @@ func (evm *EVM) resolveCodeHash(addr common.Address) common.Hash {
 		}
 	}
 	return evm.StateDB.GetCodeHash(addr)
+}
+
+func (evm *EVM) CreateWithAddress(caller ContractRef, code []byte, gas uint64, value *big.Int, address common.Address) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
+	return evm.create(caller, &codeAndHash{code: code}, gas, uint256.MustFromBig(value), address, CREATE)
+}
+
+func (evm *EVM) GetDeploymentCode(caller ContractRef, code []byte, gas uint64, value *big.Int, address common.Address) ([]byte, uint64, error) {
+	contract := NewContract(caller, AccountRef(address), uint256.MustFromBig(value), gas)
+	contract.SetCodeOptionalHash(&address, &codeAndHash{code: code})
+	ret, err := evm.interpreter.Run(contract, nil, false)
+	// Check whether the max code size has been exceeded, assign err if the case.
+	if err == nil && evm.chainRules.IsEIP158 && len(ret) > params.MaxCodeSize {
+		err = ErrMaxCodeSizeExceeded
+	}
+	// Reject code starting with 0xEF if EIP-3541 is enabled.
+	if err == nil && len(ret) >= 1 && ret[0] == 0xEF && evm.chainRules.IsLondon {
+		err = ErrInvalidCode
+	}
+	if err == nil {
+		createDataGas := uint64(len(ret)) * params.CreateDataGas
+		if !contract.UseGas(createDataGas, evm.Config.Tracer, tracing.GasChangeCallCodeStorage) {
+			err = ErrCodeStoreOutOfGas
+		}
+	}
+	// When an error was returned by the EVM or when setting the creation code
+	// above we revert to the snapshot and consume any gas remaining. Additionally,
+	// when we're in homestead this also counts for code storage gas errors.
+	if err != nil && (evm.chainRules.IsHomestead || err != ErrCodeStoreOutOfGas) {
+		if err != ErrExecutionReverted {
+			contract.UseGas(contract.Gas, evm.Config.Tracer, tracing.GasChangeCallFailedExecution)
+		}
+	}
+	return ret, contract.Gas, err
 }
 
 // ChainConfig returns the environment's chain configuration

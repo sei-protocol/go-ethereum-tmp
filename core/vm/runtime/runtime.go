@@ -49,12 +49,12 @@ type Config struct {
 	BlobFeeCap  *big.Int
 	Random      *common.Hash
 
-	State     *state.StateDB
+	State     vm.StateDB
 	GetHashFn func(n uint64) common.Hash
 }
 
 // sets defaults on the config
-func setDefaults(cfg *Config) {
+func SetDefaults(cfg *Config) {
 	if cfg.ChainConfig == nil {
 		var (
 			shanghaiTime = uint64(0)
@@ -116,11 +116,11 @@ func setDefaults(cfg *Config) {
 //
 // Execute sets up an in-memory, temporary, environment for the execution of
 // the given code. It makes sure that it's restored to its original state afterwards.
-func Execute(code, input []byte, cfg *Config) ([]byte, *state.StateDB, error) {
+func Execute(code, input []byte, cfg *Config) ([]byte, vm.StateDB, error) {
 	if cfg == nil {
 		cfg = new(Config)
 	}
-	setDefaults(cfg)
+	SetDefaults(cfg)
 
 	if cfg.State == nil {
 		cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -160,7 +160,7 @@ func Create(input []byte, cfg *Config) ([]byte, common.Address, uint64, error) {
 	if cfg == nil {
 		cfg = new(Config)
 	}
-	setDefaults(cfg)
+	SetDefaults(cfg)
 
 	if cfg.State == nil {
 		cfg.State, _ = state.New(types.EmptyRootHash, state.NewDatabaseForTesting())
@@ -196,7 +196,7 @@ func Create(input []byte, cfg *Config) ([]byte, common.Address, uint64, error) {
 // Call, unlike Execute, requires a config and also requires the State field to
 // be set.
 func Call(address common.Address, input []byte, cfg *Config) ([]byte, uint64, error) {
-	setDefaults(cfg)
+	SetDefaults(cfg)
 
 	var (
 		vmenv   = NewEnv(cfg)

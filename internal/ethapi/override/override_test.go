@@ -18,6 +18,7 @@ package override
 
 import (
 	"maps"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -33,7 +34,9 @@ type precompileContract struct{}
 
 func (p *precompileContract) RequiredGas(input []byte) uint64 { return 0 }
 
-func (p *precompileContract) Run(input []byte) ([]byte, error) { return nil, nil }
+func (p *precompileContract) Run(_ *vm.EVM, _ common.Address, _ common.Address, input []byte, _ *big.Int, _ bool, _ bool) ([]byte, error) {
+	return nil, nil
+}
 
 func TestStateOverrideMovePrecompile(t *testing.T) {
 	db := state.NewDatabase(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil), nil)
