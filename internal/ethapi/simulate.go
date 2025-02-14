@@ -139,7 +139,7 @@ func (m *simChainHeadReader) GetHeaderByHash(hash common.Hash) *types.Header {
 // it is not safe for concurrent use.
 type simulator struct {
 	b              Backend
-	state          *state.StateDB
+	state          vm.StateDB
 	base           *types.Header
 	chainConfig    *params.ChainConfig
 	gp             *core.GasPool
@@ -240,7 +240,7 @@ func (sim *simulator) processBlock(ctx context.Context, block *simBlock, header,
 	if hooks := tracer.Hooks(); hooks != nil {
 		tracingStateDB = state.NewHookedState(sim.state, hooks)
 	}
-	evm := vm.NewEVM(blockContext, tracingStateDB, sim.chainConfig, *vmConfig)
+	evm := vm.NewEVM(blockContext, tracingStateDB, sim.chainConfig, *vmConfig, sim.b.GetCustomPrecompiles())
 	// It is possible to override precompiles with EVM bytecode, or
 	// move them to another address.
 	if precompiles != nil {
