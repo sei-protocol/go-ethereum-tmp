@@ -184,16 +184,16 @@ func TestCopy(t *testing.T) {
 	// modify all in memory
 	for i := byte(0); i < 255; i++ {
 		origObj := orig.getOrNewStateObject(common.BytesToAddress([]byte{i}))
-		copyObj := copy.getOrNewStateObject(common.BytesToAddress([]byte{i}))
-		ccopyObj := ccopy.getOrNewStateObject(common.BytesToAddress([]byte{i}))
+		copyObj := copy.(*StateDB).getOrNewStateObject(common.BytesToAddress([]byte{i}))
+		ccopyObj := ccopy.(*StateDB).getOrNewStateObject(common.BytesToAddress([]byte{i}))
 
 		origObj.AddBalance(uint256.NewInt(2 * uint64(i)))
 		copyObj.AddBalance(uint256.NewInt(3 * uint64(i)))
 		ccopyObj.AddBalance(uint256.NewInt(4 * uint64(i)))
 
 		orig.updateStateObject(origObj)
-		copy.updateStateObject(copyObj)
-		ccopy.updateStateObject(copyObj)
+		copy.(*StateDB).updateStateObject(copyObj)
+		ccopy.(*StateDB).updateStateObject(copyObj)
 	}
 
 	// Finalise the changes on all concurrently
@@ -205,15 +205,15 @@ func TestCopy(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(3)
 	go finalise(&wg, orig)
-	go finalise(&wg, copy)
-	go finalise(&wg, ccopy)
+	go finalise(&wg, copy.(*StateDB))
+	go finalise(&wg, ccopy.(*StateDB))
 	wg.Wait()
 
 	// Verify that the three states have been updated independently
 	for i := byte(0); i < 255; i++ {
 		origObj := orig.getOrNewStateObject(common.BytesToAddress([]byte{i}))
-		copyObj := copy.getOrNewStateObject(common.BytesToAddress([]byte{i}))
-		ccopyObj := ccopy.getOrNewStateObject(common.BytesToAddress([]byte{i}))
+		copyObj := copy.(*StateDB).getOrNewStateObject(common.BytesToAddress([]byte{i}))
+		ccopyObj := ccopy.(*StateDB).getOrNewStateObject(common.BytesToAddress([]byte{i}))
 
 		if want := uint256.NewInt(3 * uint64(i)); origObj.Balance().Cmp(want) != 0 {
 			t.Errorf("orig obj %d: balance mismatch: have %v, want %v", i, origObj.Balance(), want)
@@ -288,13 +288,13 @@ func TestCopyObjectState(t *testing.T) {
 	}
 	orig.Finalise(true)
 	cpy := orig.Copy()
-	for _, op := range cpy.mutations {
+	for _, op := range cpy.(*StateDB).mutations {
 		if have, want := op.applied, false; have != want {
 			t.Fatalf("Error in test itself, the 'done' flag should not be set before Commit, have %v want %v", have, want)
 		}
 	}
 	orig.Commit(0, true, false)
-	for _, op := range cpy.mutations {
+	for _, op := range cpy.(*StateDB).mutations {
 		if have, want := op.applied, false; have != want {
 			t.Fatalf("Error: original state affected copy, have %v want %v", have, want)
 		}
@@ -537,7 +537,7 @@ func (test *snapshotTest) run() bool {
 	for i, action := range test.actions {
 		if len(test.snapshots) > sindex && i == test.snapshots[sindex] {
 			snapshotRevs[sindex] = state.Snapshot()
-			checkstates[sindex] = state.Copy()
+			checkstates[sindex] = state.Copy().(*StateDB)
 			sindex++
 		}
 		action.fn(action, state)
@@ -1186,7 +1186,7 @@ func TestStateDBAccessList(t *testing.T) {
 	}
 	// Check the copy
 	// Make a copy
-	state = stateCopy1
+	state = stateCopy1.(*StateDB)
 	verifyAddrs("aa", "bb")
 	verifySlots("bb", "01", "02")
 	if got, exp := len(state.accessList.addresses), 2; got != exp {

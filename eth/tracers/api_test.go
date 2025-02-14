@@ -36,7 +36,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -142,7 +141,7 @@ func (b *testBackend) teardown() {
 	b.chain.Stop()
 }
 
-func (b *testBackend) StateAtBlock(ctx context.Context, block *types.Block, reexec uint64, base *state.StateDB, readOnly bool, preferDisk bool) (*state.StateDB, StateReleaseFunc, error) {
+func (b *testBackend) StateAtBlock(ctx context.Context, block *types.Block, reexec uint64, base vm.StateDB, readOnly bool, preferDisk bool) (vm.StateDB, StateReleaseFunc, error) {
 	statedb, err := b.chain.StateAt(block.Root())
 	if err != nil {
 		return nil, nil, errStateNotFound
@@ -158,7 +157,7 @@ func (b *testBackend) StateAtBlock(ctx context.Context, block *types.Block, reex
 	return statedb, release, nil
 }
 
-func (b *testBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*types.Transaction, vm.BlockContext, *state.StateDB, StateReleaseFunc, error) {
+func (b *testBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*types.Transaction, vm.BlockContext, vm.StateDB, StateReleaseFunc, error) {
 	parent := b.chain.GetBlock(block.ParentHash(), block.NumberU64()-1)
 	if parent == nil {
 		return nil, vm.BlockContext{}, nil, nil, errBlockNotFound
@@ -546,6 +545,70 @@ func TestTraceTransaction(t *testing.T) {
 	if !errors.Is(err, errTxNotFound) {
 		t.Fatalf("want %v, have %v", errTxNotFound, err)
 	}
+}
+
+func TestTracePanicTransaction(t *testing.T) {
+	t.Parallel()
+	// Initialize test accounts
+	accounts := newAccounts(2)
+	genesis := &core.Genesis{
+		Config: params.TestChainConfig,
+		Alloc: types.GenesisAlloc{
+			accounts[0].addr: {Balance: big.NewInt(params.Ether)},
+			accounts[1].addr: {Balance: big.NewInt(params.Ether)},
+		},
+	}
+	target := common.Hash{}
+	signer := types.HomesteadSigner{}
+	backend := newTestBackend(t, 1, genesis, func(i int, b *core.BlockGen) {
+		// Transfer from account[0] to account[1]
+		tx, _ := types.SignTx(types.NewTx(&types.LegacyTx{
+			Nonce:    uint64(i),
+			To:       &accounts[1].addr,
+			Value:    big.NewInt(1000),
+			Gas:      params.TxGas,
+			GasPrice: b.BaseFee(),
+			Data:     nil}),
+			signer, accounts[0].key)
+		b.AddTx(tx)
+		target = tx.Hash()
+	})
+	defer backend.chain.Stop()
+	// Create API with a backend that uses a panic-inducing StateDB
+	panicBackend := &panicBackend{backend}
+	api := NewAPI(panicBackend)
+	result, err := api.TraceTransaction(context.Background(), target, nil)
+	// Verify panic was caught and handled
+	if err == nil {
+		t.Fatal("Expected error from panic recovery, got nil")
+	}
+	if result != nil {
+		t.Errorf("Expected nil result after panic, got %v", result)
+	}
+}
+
+type panicBackend struct {
+	Backend
+}
+
+// StateAtTransaction overrides the backend's StateAtTransaction to use a panic-inducing StateDB
+func (b *panicBackend) StateAtTransaction(ctx context.Context, block *types.Block, txIndex int, reexec uint64) (*types.Transaction, vm.BlockContext, vm.StateDB, StateReleaseFunc, error) {
+	tx, vmctx, _, release, err := b.Backend.StateAtTransaction(ctx, block, txIndex, reexec)
+	if err != nil {
+		return nil, vm.BlockContext{}, nil, nil, err
+	}
+	// Return a StateDB that panics on ApplyTransactionWithEVM
+	return tx, vmctx, &panicStateDB{}, release, nil
+}
+
+// panicStateDB is a mock StateDB that panics during ApplyTransactionWithEVM
+type panicStateDB struct {
+	vm.StateDB
+}
+
+// ApplyTransactionWithEVM is overridden to panic
+func (s *panicStateDB) ApplyTransactionWithEVM(message *core.Message, config *params.ChainConfig, gasPool *core.GasPool, statedb vm.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) ([]byte, error) {
+	panic("intentional panic for testing")
 }
 
 func TestTraceBlock(t *testing.T) {

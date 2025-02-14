@@ -85,7 +85,7 @@ type simOpts struct {
 // it is not safe for concurrent use.
 type simulator struct {
 	b              Backend
-	state          *state.StateDB
+	state          vm.StateDB
 	base           *types.Header
 	chainConfig    *params.ChainConfig
 	gp             *core.GasPool
