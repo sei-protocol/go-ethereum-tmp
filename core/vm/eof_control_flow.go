@@ -22,9 +22,9 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-func validateControlFlow(code []byte, section int, metadata []*functionMetadata, jt *JumpTable) (int, error) {
+func validateControlFlow(code []byte, section int, metadata []*FunctionMetadata, jt *JumpTable) (int, error) {
 	var (
-		maxStackHeight = int(metadata[section].inputs)
+		maxStackHeight = int(metadata[section].Inputs)
 		visitCount     = 0
 		next           = make([]int, 0, 1)
 	)
@@ -54,14 +54,14 @@ func validateControlFlow(code []byte, section int, metadata []*functionMetadata,
 		return true, int(stackBoundsMin[pos]), int(maxi - 1)
 	}
 	// set the initial stack bounds
-	setBounds(0, int(metadata[section].inputs), int(metadata[section].inputs))
+	setBounds(0, int(metadata[section].Inputs), int(metadata[section].Inputs))
 
 	qualifiedExit := false
 	for pos := 0; pos < len(code); pos++ {
 		op := OpCode(code[pos])
 		ok, currentStackMin, currentStackMax := getStackMaxMin(pos)
 		if !ok {
-			return 0, errUnreachableCode
+			return 0, ErrUnreachableCode
 		}
 
 		switch op {
@@ -84,14 +84,14 @@ func validateControlFlow(code []byte, section int, metadata []*functionMetadata,
 			In other words: RETF must unambiguously return all items remaining on the stack.
 			*/
 			if currentStackMax != currentStackMin {
-				return 0, fmt.Errorf("%w: max %d, min %d, at pos %d", errInvalidOutputs, currentStackMax, currentStackMin, pos)
+				return 0, fmt.Errorf("%w: max %d, min %d, at pos %d", ErrInvalidOutputs, currentStackMax, currentStackMin, pos)
 			}
-			numOutputs := int(metadata[section].outputs)
+			numOutputs := int(metadata[section].Outputs)
 			if numOutputs >= maxOutputItems {
 				return 0, fmt.Errorf("%w: at pos %d", errInvalidNonReturningFlag, pos)
 			}
 			if numOutputs != currentStackMin {
-				return 0, fmt.Errorf("%w: have %d, want %d, at pos %d", errInvalidOutputs, numOutputs, currentStackMin, pos)
+				return 0, fmt.Errorf("%w: have %d, want %d, at pos %d", ErrInvalidOutputs, numOutputs, currentStackMin, pos)
 			}
 			qualifiedExit = true
 		case JUMPF:
@@ -102,40 +102,40 @@ func validateControlFlow(code []byte, section int, metadata []*functionMetadata,
 				return 0, fmt.Errorf("%w: at pos %d", err, pos)
 			}
 
-			if newSection.outputs == 0x80 {
+			if newSection.Outputs == 0x80 {
 				if err := newSection.checkInputs(currentStackMin); err != nil {
 					return 0, fmt.Errorf("%w: at pos %d", err, pos)
 				}
 			} else {
 				if currentStackMax != currentStackMin {
-					return 0, fmt.Errorf("%w: max %d, min %d, at pos %d", errInvalidOutputs, currentStackMax, currentStackMin, pos)
+					return 0, fmt.Errorf("%w: max %d, min %d, at pos %d", ErrInvalidOutputs, currentStackMax, currentStackMin, pos)
 				}
-				wantStack := int(metadata[section].outputs) - newSection.stackDelta()
+				wantStack := int(metadata[section].Outputs) - newSection.stackDelta()
 				if currentStackMax != wantStack {
-					return 0, fmt.Errorf("%w: at pos %d", errInvalidOutputs, pos)
+					return 0, fmt.Errorf("%w: at pos %d", ErrInvalidOutputs, pos)
 				}
 			}
-			qualifiedExit = qualifiedExit || newSection.outputs < maxOutputItems
+			qualifiedExit = qualifiedExit || newSection.Outputs < maxOutputItems
 		case DUPN:
 			arg := int(code[pos+1]) + 1
 			if want, have := arg, currentStackMin; want > have {
-				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{stackLen: have, required: want}, pos)
+				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{StackLen: have, Required: want}, pos)
 			}
 		case SWAPN:
 			arg := int(code[pos+1]) + 1
 			if want, have := arg+1, currentStackMin; want > have {
-				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{stackLen: have, required: want}, pos)
+				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{StackLen: have, Required: want}, pos)
 			}
 		case EXCHANGE:
 			arg := int(code[pos+1])
 			n := arg>>4 + 1
 			m := arg&0x0f + 1
 			if want, have := n+m+1, currentStackMin; want > have {
-				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{stackLen: have, required: want}, pos)
+				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{StackLen: have, Required: want}, pos)
 			}
 		default:
 			if want, have := jt[op].minStack, currentStackMin; want > have {
-				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{stackLen: have, required: want}, pos)
+				return 0, fmt.Errorf("%w: at pos %d", ErrStackUnderflow{StackLen: have, Required: want}, pos)
 			}
 		}
 		if !terminals[op] && op != CALLF {
@@ -156,7 +156,7 @@ func validateControlFlow(code []byte, section int, metadata []*functionMetadata,
 					return 0, errInvalidBackwardJump
 				}
 				if nextMax != currentStackMax || nextMin != currentStackMin {
-					return 0, errInvalidMaxStackHeight
+					return 0, ErrInvalidMaxStackHeight
 				}
 			} else {
 				ok, nextMin, nextMax := getStackMaxMin(nextPos + 1)
@@ -190,7 +190,7 @@ func validateControlFlow(code []byte, section int, metadata []*functionMetadata,
 			for _, instr := range next {
 				nextPC := instr + 1
 				if nextPC >= len(code) {
-					return 0, fmt.Errorf("%w: end with %s, pos %d", errInvalidCodeTermination, op, pos)
+					return 0, fmt.Errorf("%w: end with %s, pos %d", ErrInvalidCodeTermination, op, pos)
 				}
 				if nextPC > pos {
 					// target reached via forward jump or seq flow
@@ -222,14 +222,14 @@ func validateControlFlow(code []byte, section int, metadata []*functionMetadata,
 			pos = next[0]
 		}
 	}
-	if qualifiedExit != (metadata[section].outputs < maxOutputItems) {
+	if qualifiedExit != (metadata[section].Outputs < maxOutputItems) {
 		return 0, fmt.Errorf("%w no RETF or qualified JUMPF", errInvalidNonReturningFlag)
 	}
 	if maxStackHeight >= int(params.StackLimit) {
 		return 0, ErrStackOverflow{maxStackHeight, int(params.StackLimit)}
 	}
-	if maxStackHeight != int(metadata[section].maxStackHeight) {
-		return 0, fmt.Errorf("%w in code section %d: have %d, want %d", errInvalidMaxStackHeight, section, maxStackHeight, metadata[section].maxStackHeight)
+	if maxStackHeight != int(metadata[section].MaxStackHeight) {
+		return 0, fmt.Errorf("%w in code section %d: have %d, want %d", ErrInvalidMaxStackHeight, section, maxStackHeight, metadata[section].MaxStackHeight)
 	}
 	return visitCount, nil
 }
