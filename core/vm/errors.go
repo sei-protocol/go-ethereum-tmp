@@ -47,12 +47,12 @@ var (
 // ErrStackUnderflow wraps an evm error when the items on the stack less
 // than the minimal requirement.
 type ErrStackUnderflow struct {
-	stackLen int
-	required int
+	StackLen int
+	Required int
 }
 
 func (e ErrStackUnderflow) Error() string {
-	return fmt.Sprintf("stack underflow (%d <=> %d)", e.stackLen, e.required)
+	return fmt.Sprintf("stack underflow (%d <=> %d)", e.StackLen, e.Required)
 }
 
 func (e ErrStackUnderflow) Unwrap() error {

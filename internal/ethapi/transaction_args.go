@@ -94,8 +94,8 @@ func (args *TransactionArgs) data() []byte {
 	return nil
 }
 
-// setDefaults fills in default values for unspecified tx fields.
-func (args *TransactionArgs) setDefaults(ctx context.Context, b Backend, skipGasEstimation bool) error {
+// SetDefaults fills in default values for unspecified tx fields.
+func (args *TransactionArgs) SetDefaults(ctx context.Context, b Backend, skipGasEstimation bool) error {
 	if err := args.setBlobTxSidecar(ctx); err != nil {
 		return err
 	}
@@ -413,7 +413,7 @@ func (args *TransactionArgs) CallDefaults(globalGasCap uint64, baseFee *big.Int,
 // ToMessage converts the transaction arguments to the Message type used by the
 // core evm. This method is used in calls and traces that do not require a real
 // live transaction.
-// Assumes that fields are not nil, i.e. setDefaults or CallDefaults has been called.
+// Assumes that fields are not nil, i.e. SetDefaults or CallDefaults has been called.
 func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck, skipEoACheck bool) *core.Message {
 	var (
 		gasPrice  *big.Int
@@ -467,7 +467,7 @@ func (args *TransactionArgs) ToMessage(baseFee *big.Int, skipNonceCheck, skipEoA
 }
 
 // ToTransaction converts the arguments to a transaction.
-// This assumes that setDefaults has been called.
+// This assumes that SetDefaults has been called.
 func (args *TransactionArgs) ToTransaction(defaultType int) *types.Transaction {
 	usedType := types.LegacyTxType
 	switch {

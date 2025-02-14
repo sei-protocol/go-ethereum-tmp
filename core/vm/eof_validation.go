@@ -27,22 +27,22 @@ import (
 var (
 	errInvalidMagic                  = errors.New("invalid magic")
 	errUndefinedInstruction          = errors.New("undefined instruction")
-	errTruncatedImmediate            = errors.New("truncated immediate")
+	ErrTruncatedImmediate            = errors.New("truncated immediate")
 	errInvalidSectionArgument        = errors.New("invalid section argument")
 	errInvalidCallArgument           = errors.New("callf into non-returning section")
 	errInvalidDataloadNArgument      = errors.New("invalid dataloadN argument")
-	errInvalidJumpDest               = errors.New("invalid jump destination")
+	ErrInvalidJumpDest               = errors.New("invalid jump destination")
 	errInvalidBackwardJump           = errors.New("invalid backward jump")
-	errInvalidOutputs                = errors.New("invalid number of outputs")
-	errInvalidMaxStackHeight         = errors.New("invalid max stack height")
-	errInvalidCodeTermination        = errors.New("invalid code termination")
+	ErrInvalidOutputs                = errors.New("invalid number of outputs")
+	ErrInvalidMaxStackHeight         = errors.New("invalid max stack height")
+	ErrInvalidCodeTermination        = errors.New("invalid code termination")
 	errEOFCreateWithTruncatedSection = errors.New("eofcreate with truncated section")
 	errOrphanedSubcontainer          = errors.New("subcontainer not referenced at all")
 	errIncompatibleContainerKind     = errors.New("incompatible container kind")
-	errStopAndReturnContract         = errors.New("Stop/Return and Returncontract in the same code section")
+	errStOpAndReturnContract         = errors.New("Stop/Return and Returncontract in the same code section")
 	errStopInInitCode                = errors.New("initcode contains a RETURN or STOP opcode")
 	errTruncatedTopLevelContainer    = errors.New("truncated top level container")
-	errUnreachableCode               = errors.New("unreachable code")
+	ErrUnreachableCode               = errors.New("unreachable code")
 	errInvalidNonReturningFlag       = errors.New("invalid non-returning flag, bad RETF")
 	errInvalidVersion                = errors.New("invalid version")
 	errMissingTypeHeader             = errors.New("missing type header")
@@ -73,7 +73,7 @@ type validationResult struct {
 }
 
 // validateCode validates the code parameter against the EOF v1 validity requirements.
-func validateCode(code []byte, section int, container *Container, jt *JumpTable, isInitCode bool) (*validationResult, error) {
+func ValidateCode(code []byte, section int, container *Container, jt *JumpTable, isInitCode bool) (*validationResult, error) {
 	var (
 		i = 0
 		// Tracks the number of actual instructions in the code (e.g.
@@ -81,7 +81,7 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 		// if each instruction is reachable.
 		count                = 0
 		op                   OpCode
-		analysis             bitvec
+		analysis             Bitvec
 		visitedCode          map[int]struct{}
 		visitedSubcontainers map[int]int
 		hasReturnContract    bool
@@ -101,7 +101,7 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 		}
 		size := int(immediates[op])
 		if size != 0 && len(code) <= i+size {
-			return nil, fmt.Errorf("%w: op %s, pos %d", errTruncatedImmediate, op, i)
+			return nil, fmt.Errorf("%w: op %s, pos %d", ErrTruncatedImmediate, op, i)
 		}
 		switch op {
 		case RJUMP, RJUMPI:
@@ -112,7 +112,7 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 			maxSize := int(code[i+1])
 			length := maxSize + 1
 			if len(code) <= i+length {
-				return nil, fmt.Errorf("%w: jump table truncated, op %s, pos %d", errTruncatedImmediate, op, i)
+				return nil, fmt.Errorf("%w: jump table truncated, op %s, pos %d", ErrTruncatedImmediate, op, i)
 			}
 			offset := i + 2
 			for j := 0; j < length; j++ {
@@ -123,10 +123,10 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 			i += 2 * maxSize
 		case CALLF:
 			arg, _ := parseUint16(code[i+1:])
-			if arg >= len(container.types) {
-				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errInvalidSectionArgument, arg, len(container.types), i)
+			if arg >= len(container.Types) {
+				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errInvalidSectionArgument, arg, len(container.Types), i)
 			}
-			if container.types[arg].outputs == 0x80 {
+			if container.Types[arg].Outputs == 0x80 {
 				return nil, fmt.Errorf("%w: section %v", errInvalidCallArgument, arg)
 			}
 			if visitedCode == nil {
@@ -135,11 +135,11 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 			visitedCode[arg] = struct{}{}
 		case JUMPF:
 			arg, _ := parseUint16(code[i+1:])
-			if arg >= len(container.types) {
-				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errInvalidSectionArgument, arg, len(container.types), i)
+			if arg >= len(container.Types) {
+				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errInvalidSectionArgument, arg, len(container.Types), i)
 			}
-			if container.types[arg].outputs != 0x80 && container.types[arg].outputs > container.types[section].outputs {
-				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errInvalidOutputs, arg, len(container.types), i)
+			if container.Types[arg].Outputs != 0x80 && container.Types[arg].Outputs > container.Types[section].Outputs {
+				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", ErrInvalidOutputs, arg, len(container.Types), i)
 			}
 			if visitedCode == nil {
 				visitedCode = make(map[int]struct{})
@@ -148,16 +148,16 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 		case DATALOADN:
 			arg, _ := parseUint16(code[i+1:])
 			// TODO why are we checking this? We should just pad
-			if arg+32 > len(container.data) {
-				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errInvalidDataloadNArgument, arg, len(container.data), i)
+			if arg+32 > len(container.Data) {
+				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errInvalidDataloadNArgument, arg, len(container.Data), i)
 			}
 		case RETURNCONTRACT:
 			if !isInitCode {
 				return nil, errIncompatibleContainerKind
 			}
 			arg := int(code[i+1])
-			if arg >= len(container.subContainers) {
-				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errUnreachableCode, arg, len(container.subContainers), i)
+			if arg >= len(container.SubContainers) {
+				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", ErrUnreachableCode, arg, len(container.SubContainers), i)
 			}
 			if visitedSubcontainers == nil {
 				visitedSubcontainers = make(map[int]int)
@@ -167,17 +167,17 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 				return nil, fmt.Errorf("section already referenced, arg :%d", arg)
 			}
 			if hasStop {
-				return nil, errStopAndReturnContract
+				return nil, errStOpAndReturnContract
 			}
 			hasReturnContract = true
 			visitedSubcontainers[arg] = refByReturnContract
 		case EOFCREATE:
 			arg := int(code[i+1])
-			if arg >= len(container.subContainers) {
-				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", errUnreachableCode, arg, len(container.subContainers), i)
+			if arg >= len(container.SubContainers) {
+				return nil, fmt.Errorf("%w: arg %d, last %d, pos %d", ErrUnreachableCode, arg, len(container.SubContainers), i)
 			}
-			if ct := container.subContainers[arg]; len(ct.data) != ct.dataSize {
-				return nil, fmt.Errorf("%w: container %d, have %d, claimed %d, pos %d", errEOFCreateWithTruncatedSection, arg, len(ct.data), ct.dataSize, i)
+			if ct := container.SubContainers[arg]; len(ct.Data) != ct.DataSize {
+				return nil, fmt.Errorf("%w: container %d, have %d, claimed %d, pos %d", errEOFCreateWithTruncatedSection, arg, len(ct.Data), ct.DataSize, i)
 			}
 			if visitedSubcontainers == nil {
 				visitedSubcontainers = make(map[int]int)
@@ -192,7 +192,7 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 				return nil, errStopInInitCode
 			}
 			if hasReturnContract {
-				return nil, errStopAndReturnContract
+				return nil, errStOpAndReturnContract
 			}
 			hasStop = true
 		}
@@ -201,13 +201,13 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 	// Code sections may not "fall through" and require proper termination.
 	// Therefore, the last instruction must be considered terminal or RJUMP.
 	if !terminals[op] && op != RJUMP {
-		return nil, fmt.Errorf("%w: end with %s, pos %d", errInvalidCodeTermination, op, i)
+		return nil, fmt.Errorf("%w: end with %s, pos %d", ErrInvalidCodeTermination, op, i)
 	}
-	if paths, err := validateControlFlow(code, section, container.types, jt); err != nil {
+	if paths, err := validateControlFlow(code, section, container.Types, jt); err != nil {
 		return nil, err
 	} else if paths != count {
 		// TODO(matt): return actual position of unreachable code
-		return nil, errUnreachableCode
+		return nil, ErrUnreachableCode
 	}
 	return &validationResult{
 		visitedCode:          visitedCode,
@@ -218,7 +218,7 @@ func validateCode(code []byte, section int, container *Container, jt *JumpTable,
 }
 
 // checkDest parses a relative offset at code[0:2] and checks if it is a valid jump destination.
-func checkDest(code []byte, analysis *bitvec, imm, from, length int) error {
+func checkDest(code []byte, analysis *Bitvec, imm, from, length int) error {
 	if len(code) < imm+2 {
 		return io.ErrUnexpectedEOF
 	}
@@ -228,10 +228,10 @@ func checkDest(code []byte, analysis *bitvec, imm, from, length int) error {
 	offset := parseInt16(code[imm:])
 	dest := from + offset
 	if dest < 0 || dest >= length {
-		return fmt.Errorf("%w: out-of-bounds offset: offset %d, dest %d, pos %d", errInvalidJumpDest, offset, dest, imm)
+		return fmt.Errorf("%w: out-of-bounds offset: offset %d, dest %d, pos %d", ErrInvalidJumpDest, offset, dest, imm)
 	}
 	if !analysis.codeSegment(uint64(dest)) {
-		return fmt.Errorf("%w: offset into immediate: offset %d, dest %d, pos %d", errInvalidJumpDest, offset, dest, imm)
+		return fmt.Errorf("%w: offset into immediate: offset %d, dest %d, pos %d", ErrInvalidJumpDest, offset, dest, imm)
 	}
 	return nil
 }

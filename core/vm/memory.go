@@ -39,6 +39,10 @@ func NewMemory() *Memory {
 	return memoryPool.Get().(*Memory)
 }
 
+func (m *Memory) Store() []byte {
+	return m.store
+}
+
 // Free returns the memory to the pool.
 func (m *Memory) Free() {
 	// To reduce peak allocation, return only smaller memory instances to the pool.

@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package vm_test
 
 import (
 	"bytes"
@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -42,9 +43,9 @@ func TestMemoryGasCost(t *testing.T) {
 		{0x1fffffffe1, 0, true},
 	}
 	for i, tt := range tests {
-		v, err := memoryGasCost(&Memory{}, tt.size)
-		if (err == ErrGasUintOverflow) != tt.overflow {
-			t.Errorf("test %d: overflow mismatch: have %v, want %v", i, err == ErrGasUintOverflow, tt.overflow)
+		v, err := vm.MemoryGasCost(&vm.Memory{}, tt.size)
+		if (err == vm.ErrGasUintOverflow) != tt.overflow {
+			t.Errorf("test %d: overflow mismatch: have %v, want %v", i, err == vm.ErrGasUintOverflow, tt.overflow)
 		}
 		if v != tt.cost {
 			t.Errorf("test %d: gas cost mismatch: have %v, want %v", i, v, tt.cost)
@@ -77,7 +78,7 @@ var eip2200Tests = []struct {
 	{1, math.MaxUint64, "0x60016000556001600055", 1612, 0, nil},                // 1 -> 1 -> 1
 	{0, math.MaxUint64, "0x600160005560006000556001600055", 40818, 19200, nil}, // 0 -> 1 -> 0 -> 1
 	{1, math.MaxUint64, "0x600060005560016000556000600055", 10818, 19200, nil}, // 1 -> 0 -> 1 -> 0
-	{1, 2306, "0x6001600055", 2306, 0, ErrOutOfGas},                            // 1 -> 1 (2300 sentry + 2xPUSH)
+	{1, 2306, "0x6001600055", 2306, 0, vm.ErrOutOfGas},                         // 1 -> 1 (2300 sentry + 2xPUSH)
 	{1, 2307, "0x6001600055", 806, 0, nil},                                     // 1 -> 1 (2301 sentry + 2xPUSH)
 }
 
@@ -91,13 +92,13 @@ func TestEIP2200(t *testing.T) {
 		statedb.SetState(address, common.Hash{}, common.BytesToHash([]byte{tt.original}))
 		statedb.Finalise(true) // Push the state into the "original" slot
 
-		vmctx := BlockContext{
-			CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-			Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int) {},
+		vmctx := vm.BlockContext{
+			CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
+			Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int) {},
 		}
-		evm := NewEVM(vmctx, statedb, params.AllEthashProtocolChanges, Config{ExtraEips: []int{2200}})
+		evm := vm.NewEVM(vmctx, statedb, params.AllEthashProtocolChanges, vm.Config{ExtraEips: []int{2200}})
 
-		_, gas, err := evm.Call(AccountRef(common.Address{}), address, nil, tt.gaspool, new(uint256.Int))
+		_, gas, err := evm.Call(vm.AccountRef(common.Address{}), address, nil, tt.gaspool, new(uint256.Int))
 		if !errors.Is(err, tt.failure) {
 			t.Errorf("test %d: failure mismatch: have %v, want %v", i, err, tt.failure)
 		}
@@ -141,19 +142,19 @@ func TestCreateGas(t *testing.T) {
 			statedb.CreateAccount(address)
 			statedb.SetCode(address, hexutil.MustDecode(tt.code))
 			statedb.Finalise(true)
-			vmctx := BlockContext{
-				CanTransfer: func(StateDB, common.Address, *uint256.Int) bool { return true },
-				Transfer:    func(StateDB, common.Address, common.Address, *uint256.Int) {},
+			vmctx := vm.BlockContext{
+				CanTransfer: func(vm.StateDB, common.Address, *uint256.Int) bool { return true },
+				Transfer:    func(vm.StateDB, common.Address, common.Address, *uint256.Int) {},
 				BlockNumber: big.NewInt(0),
 			}
-			config := Config{}
+			config := vm.Config{}
 			if tt.eip3860 {
 				config.ExtraEips = []int{3860}
 			}
 
-			evm := NewEVM(vmctx, statedb, params.AllEthashProtocolChanges, config)
+			evm := vm.NewEVM(vmctx, statedb, params.AllEthashProtocolChanges, config)
 			var startGas = uint64(testGas)
-			ret, gas, err := evm.Call(AccountRef(common.Address{}), address, nil, startGas, new(uint256.Int))
+			ret, gas, err := evm.Call(vm.AccountRef(common.Address{}), address, nil, startGas, new(uint256.Int))
 			if err != nil {
 				return false
 			}
