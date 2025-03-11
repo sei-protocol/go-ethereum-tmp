@@ -286,7 +286,7 @@ func (sim *simulator) activePrecompiles(base *types.Header) vm.PrecompiledContra
 		isMerge = (base.Difficulty.Sign() == 0)
 		rules   = sim.chainConfig.Rules(base.Number, isMerge, base.Time)
 	)
-	return vm.ActivePrecompiledContracts(rules)
+	return vm.ActivePrecompiledContracts(rules, sim.b.GetCustomPrecompiles())
 }
 
 // sanitizeChain checks the chain integrity. Specifically it checks that

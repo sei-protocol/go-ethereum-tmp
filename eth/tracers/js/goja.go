@@ -257,7 +257,7 @@ func (t *jsTracer) OnTxStart(env *tracing.VMContext, tx *types.Transaction, from
 	t.dbValue = db.setupObject()
 	// Update list of precompiles based on current block
 	rules := t.chainConfig.Rules(env.BlockNumber, env.Random != nil, env.Time)
-	t.activePrecompiles = vm.ActivePrecompiles(rules)
+	t.activePrecompiles = append(env.Precompiles, vm.ActivePrecompiles(rules)...)
 	t.ctx["block"] = t.vm.ToValue(t.env.BlockNumber.Uint64())
 	t.ctx["gas"] = t.vm.ToValue(tx.Gas())
 	gasPriceBig, err := t.toBig(t.vm, tx.EffectiveGasTipValue(env.BaseFee).String())

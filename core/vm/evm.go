@@ -676,6 +676,10 @@ func (evm *EVM) captureEnd(depth int, startGas uint64, leftOverGas uint64, ret [
 // GetVMContext provides context about the block being executed as well as state
 // to the tracers.
 func (evm *EVM) GetVMContext() *tracing.VMContext {
+	precompiles := make([]common.Address, len(evm.precompiles))
+	for p := range evm.precompiles {
+		precompiles = append(precompiles, p)
+	}
 	return &tracing.VMContext{
 		Coinbase:    evm.Context.Coinbase,
 		BlockNumber: evm.Context.BlockNumber,
@@ -683,5 +687,6 @@ func (evm *EVM) GetVMContext() *tracing.VMContext {
 		Random:      evm.Context.Random,
 		BaseFee:     evm.Context.BaseFee,
 		StateDB:     evm.StateDB,
+		Precompiles: precompiles,
 	}
 }
