@@ -970,7 +970,7 @@ func (api *API) TraceCall(ctx context.Context, args ethapi.TransactionArgs, bloc
 		}
 		rules := api.backend.ChainConfig().Rules(vmctx.BlockNumber, vmctx.Random != nil, vmctx.Time)
 
-		precompiles = vm.ActivePrecompiledContracts(rules)
+		precompiles = vm.ActivePrecompiledContracts(rules, api.backend.GetCustomPrecompiles())
 		if err := config.StateOverrides.Apply(statedb, precompiles); err != nil {
 			return nil, err
 		}

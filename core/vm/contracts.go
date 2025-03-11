@@ -195,8 +195,14 @@ func activePrecompiledContracts(rules params.Rules) PrecompiledContracts {
 }
 
 // ActivePrecompiledContracts returns a copy of precompiled contracts enabled with the current configuration.
-func ActivePrecompiledContracts(rules params.Rules) PrecompiledContracts {
-	return maps.Clone(activePrecompiledContracts(rules))
+func ActivePrecompiledContracts(rules params.Rules, customPrecompiles map[common.Address]PrecompiledContract) PrecompiledContracts {
+	res := maps.Clone(activePrecompiledContracts(rules))
+	for addr, p := range customPrecompiles {
+		if _, ok := res[addr]; !ok {
+			res[addr] = p
+		}
+	}
+	return res
 }
 
 // ActivePrecompiles returns the precompile addresses enabled with the current configuration.

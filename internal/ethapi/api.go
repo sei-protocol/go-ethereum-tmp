@@ -665,7 +665,7 @@ func doCall(ctx context.Context, b Backend, args TransactionArgs, state vm.State
 		}
 	}
 	rules := b.ChainConfig().Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time)
-	precompiles := vm.ActivePrecompiledContracts(rules)
+	precompiles := vm.ActivePrecompiledContracts(rules, b.GetCustomPrecompiles())
 	if err := overrides.Apply(state, precompiles); err != nil {
 		return nil, err
 	}
@@ -1215,6 +1215,9 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 	isPostMerge := header.Difficulty.Sign() == 0
 	// Retrieve the precompiles since they don't need to be added to the access list
 	precompiles := vm.ActivePrecompiles(b.ChainConfig().Rules(header.Number, isPostMerge, header.Time))
+	for cp := range b.GetCustomPrecompiles() {
+		precompiles = append(precompiles, cp)
+	}
 
 	// addressesToExclude contains sender, receiver, precompiles and valid authorizations
 	addressesToExclude := map[common.Address]struct{}{args.from(): {}, to: {}}
