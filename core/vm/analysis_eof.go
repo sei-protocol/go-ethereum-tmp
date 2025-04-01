@@ -17,17 +17,17 @@
 package vm
 
 // eofCodeBitmap collects data locations in code.
-func eofCodeBitmap(code []byte) bitvec {
+func eofCodeBitmap(code []byte) Bitvec {
 	// The bitmap is 4 bytes longer than necessary, in case the code
 	// ends with a PUSH32, the algorithm will push zeroes onto the
 	// bitvector outside the bounds of the actual code.
-	bits := make(bitvec, len(code)/8+1+4)
-	return eofCodeBitmapInternal(code, bits)
+	bits := make(Bitvec, len(code)/8+1+4)
+	return EofCodeBitmapInternal(code, bits)
 }
 
 // eofCodeBitmapInternal is the internal implementation of codeBitmap for EOF
 // code validation.
-func eofCodeBitmapInternal(code, bits bitvec) bitvec {
+func EofCodeBitmapInternal(code, bits Bitvec) Bitvec {
 	for pc := uint64(0); pc < uint64(len(code)); {
 		var (
 			op      = OpCode(code[pc])

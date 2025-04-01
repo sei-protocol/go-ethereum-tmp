@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -71,11 +70,11 @@ type BlockContext struct {
 // All fields can change between transactions.
 type TxContext struct {
 	// Message information
-	Origin       common.Address      // Provides information for ORIGIN
-	GasPrice     *big.Int            // Provides information for GASPRICE (and is used to zero the basefee if NoBaseFee is set)
-	BlobHashes   []common.Hash       // Provides information for BLOBHASH
-	BlobFeeCap   *big.Int            // Is used to zero the blobbasefee if NoBaseFee is set
-	AccessEvents *state.AccessEvents // Capture all state accesses for this tx
+	Origin       common.Address // Provides information for ORIGIN
+	GasPrice     *big.Int       // Provides information for GASPRICE (and is used to zero the basefee if NoBaseFee is set)
+	BlobHashes   []common.Hash  // Provides information for BLOBHASH
+	BlobFeeCap   *big.Int       // Is used to zero the blobbasefee if NoBaseFee is set
+	AccessEvents *AccessEvents  // Capture all state accesses for this tx
 }
 
 // EVM is the Ethereum Virtual Machine base object and provides
@@ -124,25 +123,37 @@ type EVM struct {
 
 	// jumpDests is the aggregated result of JUMPDEST analysis made through
 	// the life cycle of EVM.
-	jumpDests map[common.Hash]bitvec
+	jumpDests map[common.Hash]Bitvec
 }
 
 // NewEVM constructs an EVM instance with the supplied block context, state
 // database and several configs. It meant to be used throughout the entire
 // state transition of a block, with the transaction context switched as
 // needed by calling evm.SetTxContext.
-func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainConfig, config Config) *EVM {
+func NewEVM(blockCtx BlockContext, statedb StateDB, chainConfig *params.ChainConfig, config Config, customPrecompiles map[common.Address]PrecompiledContract) *EVM {
 	evm := &EVM{
 		Context:     blockCtx,
 		StateDB:     statedb,
 		Config:      config,
 		chainConfig: chainConfig,
 		chainRules:  chainConfig.Rules(blockCtx.BlockNumber, blockCtx.Random != nil, blockCtx.Time),
-		jumpDests:   make(map[common.Hash]bitvec),
+		jumpDests:   make(map[common.Hash]Bitvec),
+		precompiles: map[common.Address]PrecompiledContract{},
 	}
-	evm.precompiles = activePrecompiledContracts(evm.chainRules)
+	for addr, builtinPrecompile := range activePrecompiledContracts(evm.chainRules) {
+		evm.precompiles[addr] = builtinPrecompile
+	}
+	for addr, p := range customPrecompiles {
+		if _, exists := evm.precompiles[addr]; !exists {
+			evm.precompiles[addr] = p
+		}
+	}
 	evm.interpreter = NewEVMInterpreter(evm)
 	return evm
+}
+
+func (evm *EVM) GetInterpreter() *EVMInterpreter {
+	return evm.interpreter
 }
 
 // SetPrecompiles sets the precompiled contracts for the EVM.
@@ -156,7 +167,7 @@ func (evm *EVM) SetPrecompiles(precompiles PrecompiledContracts) {
 // This is not threadsafe and should only be done very cautiously.
 func (evm *EVM) SetTxContext(txCtx TxContext) {
 	if evm.chainRules.IsEIP4762 {
-		txCtx.AccessEvents = state.NewAccessEvents(evm.StateDB.PointCache())
+		txCtx.AccessEvents = NewAccessEvents(evm.StateDB.PointCache())
 	}
 	evm.TxContext = txCtx
 }
@@ -224,7 +235,7 @@ func (evm *EVM) Call(caller common.Address, addr common.Address, input []byte, g
 	evm.Context.Transfer(evm.StateDB, caller, addr, value)
 
 	if isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		ret, gas, err = RunPrecompiledContract(p, evm, caller, caller, input, gas, value.ToBig(), evm.Config.Tracer, evm.interpreter.readOnly, false)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		code := evm.resolveCode(addr)
@@ -288,7 +299,7 @@ func (evm *EVM) CallCode(caller common.Address, addr common.Address, input []byt
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		ret, gas, err = RunPrecompiledContract(p, evm, caller, caller, input, gas, value.ToBig(), evm.Config.Tracer, evm.interpreter.readOnly, true)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -331,7 +342,9 @@ func (evm *EVM) DelegateCall(originCaller common.Address, caller common.Address,
 
 	// It is allowed to call precompiles, even via delegatecall
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		// NOTE: caller must, at all times be a contract. It should never happen
+		// that caller is something other than a Contract.
+		ret, gas, err = RunPrecompiledContract(p, evm, originCaller, caller, input, gas, nil, evm.Config.Tracer, evm.interpreter.readOnly, true)
 	} else {
 		// Initialise a new contract and make initialise the delegate values
 		//
@@ -383,7 +396,7 @@ func (evm *EVM) StaticCall(caller common.Address, addr common.Address, input []b
 	evm.StateDB.AddBalance(addr, new(uint256.Int), tracing.BalanceChangeTouchAccount)
 
 	if p, isPrecompile := evm.precompile(addr); isPrecompile {
-		ret, gas, err = RunPrecompiledContract(p, input, gas, evm.Config.Tracer)
+		ret, gas, err = RunPrecompiledContract(p, evm, caller, caller, input, gas, nil, evm.Config.Tracer, true, false)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
@@ -588,6 +601,39 @@ func (evm *EVM) resolveCodeHash(addr common.Address) common.Hash {
 	return evm.StateDB.GetCodeHash(addr)
 }
 
+func (evm *EVM) CreateWithAddress(caller common.Address, code []byte, gas uint64, value *big.Int, address common.Address) (ret []byte, contractAddr common.Address, leftOverGas uint64, err error) {
+	return evm.create(caller, code, gas, uint256.MustFromBig(value), address, CREATE)
+}
+
+func (evm *EVM) GetDeploymentCode(caller common.Address, code []byte, gas uint64, value *big.Int, address common.Address) ([]byte, uint64, error) {
+	contract := NewContract(caller, address, uint256.MustFromBig(value), gas, map[common.Hash]Bitvec{})
+	contract.SetCallCode(crypto.Keccak256Hash(code), code)
+	ret, err := evm.interpreter.Run(contract, nil, false)
+	// Check whether the max code size has been exceeded, assign err if the case.
+	if err == nil && evm.chainRules.IsEIP158 && len(ret) > params.MaxCodeSize {
+		err = ErrMaxCodeSizeExceeded
+	}
+	// Reject code starting with 0xEF if EIP-3541 is enabled.
+	if err == nil && len(ret) >= 1 && ret[0] == 0xEF && evm.chainRules.IsLondon {
+		err = ErrInvalidCode
+	}
+	if err == nil {
+		createDataGas := uint64(len(ret)) * params.CreateDataGas
+		if !contract.UseGas(createDataGas, evm.Config.Tracer, tracing.GasChangeCallCodeStorage) {
+			err = ErrCodeStoreOutOfGas
+		}
+	}
+	// When an error was returned by the EVM or when setting the creation code
+	// above we revert to the snapshot and consume any gas remaining. Additionally,
+	// when we're in homestead this also counts for code storage gas errors.
+	if err != nil && (evm.chainRules.IsHomestead || err != ErrCodeStoreOutOfGas) {
+		if err != ErrExecutionReverted {
+			contract.UseGas(contract.Gas, evm.Config.Tracer, tracing.GasChangeCallFailedExecution)
+		}
+	}
+	return ret, contract.Gas, err
+}
+
 // ChainConfig returns the environment's chain configuration
 func (evm *EVM) ChainConfig() *params.ChainConfig { return evm.chainConfig }
 
@@ -621,6 +667,10 @@ func (evm *EVM) captureEnd(depth int, startGas uint64, leftOverGas uint64, ret [
 // GetVMContext provides context about the block being executed as well as state
 // to the tracers.
 func (evm *EVM) GetVMContext() *tracing.VMContext {
+	precompiles := make([]common.Address, len(evm.precompiles))
+	for p := range evm.precompiles {
+		precompiles = append(precompiles, p)
+	}
 	return &tracing.VMContext{
 		Coinbase:    evm.Context.Coinbase,
 		BlockNumber: evm.Context.BlockNumber,
@@ -628,5 +678,6 @@ func (evm *EVM) GetVMContext() *tracing.VMContext {
 		Random:      evm.Context.Random,
 		BaseFee:     evm.Context.BaseFee,
 		StateDB:     evm.StateDB,
+		Precompiles: precompiles,
 	}
 }
