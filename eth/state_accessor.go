@@ -236,7 +236,7 @@ func (eth *Ethereum) stateAtTransaction(ctx context.Context, block *types.Block,
 	}
 	// Insert parent beacon block root in the state as per EIP-4788.
 	context := core.NewEVMBlockContext(block.Header(), eth.blockchain, nil)
-	evm := vm.NewEVM(context, statedb, eth.blockchain.Config(), vm.Config{}, eth.APIBackend.GetCustomPrecompiles())
+	evm := vm.NewEVM(context, statedb, eth.blockchain.Config(), vm.Config{}, eth.APIBackend.GetCustomPrecompiles(block.Number().Int64()))
 	if beaconRoot := block.BeaconRoot(); beaconRoot != nil {
 		core.ProcessBeaconBlockRoot(*beaconRoot, evm)
 	}

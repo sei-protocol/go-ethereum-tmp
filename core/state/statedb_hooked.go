@@ -164,19 +164,21 @@ func (s *HookedStateDB) AccessEvents() *vm.AccessEvents {
 
 func (s *HookedStateDB) SubBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
 	prev := s.StateDB.SubBalance(addr, amount, reason)
-	if s.hooks.OnBalanceChange != nil && !amount.IsZero() {
-		newBalance := new(uint256.Int).Sub(&prev, amount)
-		s.hooks.OnBalanceChange(addr, prev.ToBig(), newBalance.ToBig(), reason)
-	}
+	// tracked already
+	// if s.hooks.OnBalanceChange != nil && !amount.IsZero() {
+	// 	newBalance := new(uint256.Int).Sub(&prev, amount)
+	// 	s.hooks.OnBalanceChange(addr, prev.ToBig(), newBalance.ToBig(), reason)
+	// }
 	return prev
 }
 
 func (s *HookedStateDB) AddBalance(addr common.Address, amount *uint256.Int, reason tracing.BalanceChangeReason) uint256.Int {
 	prev := s.StateDB.AddBalance(addr, amount, reason)
-	if s.hooks.OnBalanceChange != nil && !amount.IsZero() {
-		newBalance := new(uint256.Int).Add(&prev, amount)
-		s.hooks.OnBalanceChange(addr, prev.ToBig(), newBalance.ToBig(), reason)
-	}
+	// tracked already
+	// if s.hooks.OnBalanceChange != nil && !amount.IsZero() {
+	// 	newBalance := new(uint256.Int).Add(&prev, amount)
+	// 	s.hooks.OnBalanceChange(addr, prev.ToBig(), newBalance.ToBig(), reason)
+	// }
 	return prev
 }
 

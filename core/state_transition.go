@@ -494,7 +494,9 @@ func (st *StateTransition) Execute() (*ExecutionResult, error) {
 	// Execute the preparatory steps for state transition which includes:
 	// - prepare accessList(post-berlin)
 	// - reset transient storage(eip 1153)
-	st.state.Prepare(rules, msg.From, st.evm.Context.Coinbase, msg.To, vm.ActivePrecompiles(rules), msg.AccessList)
+	precompiles := st.evm.GetPrecompiles()
+	precompiles = append(precompiles, vm.ActivePrecompiles(rules)...)
+	st.state.Prepare(rules, msg.From, st.evm.Context.Coinbase, msg.To, precompiles, msg.AccessList)
 
 	var (
 		ret   []byte
@@ -556,8 +558,12 @@ func (st *StateTransition) Execute() (*ExecutionResult, error) {
 		// the coinbase when simulating calls.
 	} else {
 		fee := new(uint256.Int).SetUint64(st.gasUsed())
+		baseFee := st.evm.Context.BaseFee
+		if baseFee == nil || baseFee.Sign() == 0 {
+			baseFee = common.Big0
+		}
+		totalFeePerGas := new(big.Int).Add(baseFee, effectiveTip)
 		// Sei doesn't don't burn the base fee and instead funds the Coinbase address with the base fee
-		totalFeePerGas := new(big.Int).Add(st.evm.Context.BaseFee, effectiveTip)
 		fee.Mul(fee, uint256.MustFromBig(totalFeePerGas))
 		st.state.AddBalance(st.evm.Context.Coinbase, fee, tracing.BalanceIncreaseRewardTransactionFee)
 

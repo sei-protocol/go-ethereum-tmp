@@ -20,7 +20,6 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 )
 
@@ -76,14 +75,15 @@ func TestBlockchain(t *testing.T) {
 
 // TestExecutionSpecBlocktests runs the test fixtures from execution-spec-tests.
 func TestExecutionSpecBlocktests(t *testing.T) {
-	if !common.FileExist(executionSpecBlockchainTestDir) {
-		t.Skipf("directory %s does not exist", executionSpecBlockchainTestDir)
-	}
-	bt := new(testMatcher)
+	t.Skip("state root will be different from what official geth calculates because we don't burn")
+	// if !common.FileExist(executionSpecBlockchainTestDir) {
+	// 	t.Skipf("directory %s does not exist", executionSpecBlockchainTestDir)
+	// }
+	// bt := new(testMatcher)
 
-	bt.walk(t, executionSpecBlockchainTestDir, func(t *testing.T, name string, test *BlockTest) {
-		execBlockTest(t, bt, test)
-	})
+	// bt.walk(t, executionSpecBlockchainTestDir, func(t *testing.T, name string, test *BlockTest) {
+	// 	execBlockTest(t, bt, test)
+	// })
 }
 
 func execBlockTest(t *testing.T, bt *testMatcher, test *BlockTest) {
