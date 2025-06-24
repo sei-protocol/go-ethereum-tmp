@@ -10,6 +10,7 @@ type SignTransactionResult = ethapi.SignTransactionResult
 type TransactionArgs = ethapi.TransactionArgs
 type StateOverride = override.StateOverride
 type BlockOverrides = override.BlockOverrides
+type ChainContextBackend = ethapi.ChainContextBackend
 
 var NewRPCTransaction = ethapi.NewRPCTransaction
 var AccessList = ethapi.AccessList

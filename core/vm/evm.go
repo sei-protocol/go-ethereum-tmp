@@ -681,3 +681,14 @@ func (evm *EVM) GetVMContext() *tracing.VMContext {
 		Precompiles: precompiles,
 	}
 }
+
+func (evm *EVM) GetDepth() int {
+	return evm.depth
+}
+
+func (evm *EVM) GetPrecompiles() (res []common.Address) {
+	for addr := range evm.precompiles {
+		res = append(res, addr)
+	}
+	return
+}
