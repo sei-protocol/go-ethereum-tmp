@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package vm
+package vm_test
 
 import (
 	"encoding/hex"
@@ -22,48 +22,49 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/vm"
 )
 
 func TestEOFMarshaling(t *testing.T) {
 	for i, test := range []struct {
-		want Container
+		want vm.Container
 		err  error
 	}{
 		{
-			want: Container{
-				types:        []*functionMetadata{{inputs: 0, outputs: 0x80, maxStackHeight: 1}},
-				codeSections: [][]byte{common.Hex2Bytes("604200")},
-				data:         []byte{0x01, 0x02, 0x03},
-				dataSize:     3,
+			want: vm.Container{
+				Types:        []*vm.FunctionMetadata{{Inputs: 0, Outputs: 0x80, MaxStackHeight: 1}},
+				CodeSections: [][]byte{common.Hex2Bytes("604200")},
+				Data:         []byte{0x01, 0x02, 0x03},
+				DataSize:     3,
 			},
 		},
 		{
-			want: Container{
-				types:        []*functionMetadata{{inputs: 0, outputs: 0x80, maxStackHeight: 1}},
-				codeSections: [][]byte{common.Hex2Bytes("604200")},
-				data:         []byte{0x01, 0x02, 0x03},
-				dataSize:     3,
+			want: vm.Container{
+				Types:        []*vm.FunctionMetadata{{Inputs: 0, Outputs: 0x80, MaxStackHeight: 1}},
+				CodeSections: [][]byte{common.Hex2Bytes("604200")},
+				Data:         []byte{0x01, 0x02, 0x03},
+				DataSize:     3,
 			},
 		},
 		{
-			want: Container{
-				types: []*functionMetadata{
-					{inputs: 0, outputs: 0x80, maxStackHeight: 1},
-					{inputs: 2, outputs: 3, maxStackHeight: 4},
-					{inputs: 1, outputs: 1, maxStackHeight: 1},
+			want: vm.Container{
+				Types: []*vm.FunctionMetadata{
+					{Inputs: 0, Outputs: 0x80, MaxStackHeight: 1},
+					{Inputs: 2, Outputs: 3, MaxStackHeight: 4},
+					{Inputs: 1, Outputs: 1, MaxStackHeight: 1},
 				},
-				codeSections: [][]byte{
+				CodeSections: [][]byte{
 					common.Hex2Bytes("604200"),
 					common.Hex2Bytes("6042604200"),
 					common.Hex2Bytes("00"),
 				},
-				data: []byte{},
+				Data: []byte{},
 			},
 		},
 	} {
 		var (
 			b   = test.want.MarshalBinary()
-			got Container
+			got vm.Container
 		)
 		t.Logf("b: %#x", b)
 		if err := got.UnmarshalBinary(b, true); err != nil && err != test.err {
@@ -76,20 +77,20 @@ func TestEOFMarshaling(t *testing.T) {
 }
 
 func TestEOFSubcontainer(t *testing.T) {
-	var subcontainer = new(Container)
+	var subcontainer = new(vm.Container)
 	if err := subcontainer.UnmarshalBinary(common.Hex2Bytes("ef000101000402000100010400000000800000fe"), true); err != nil {
 		t.Fatal(err)
 	}
-	container := Container{
-		types:         []*functionMetadata{{inputs: 0, outputs: 0x80, maxStackHeight: 1}},
-		codeSections:  [][]byte{common.Hex2Bytes("604200")},
-		subContainers: []*Container{subcontainer},
-		data:          []byte{0x01, 0x02, 0x03},
-		dataSize:      3,
+	container := vm.Container{
+		Types:         []*vm.FunctionMetadata{{Inputs: 0, Outputs: 0x80, MaxStackHeight: 1}},
+		CodeSections:  [][]byte{common.Hex2Bytes("604200")},
+		SubContainers: []*vm.Container{subcontainer},
+		Data:          []byte{0x01, 0x02, 0x03},
+		DataSize:      3,
 	}
 	var (
 		b   = container.MarshalBinary()
-		got Container
+		got vm.Container
 	)
 	if err := got.UnmarshalBinary(b, true); err != nil {
 		t.Fatal(err)
@@ -109,7 +110,7 @@ func TestMarshaling(t *testing.T) {
 		if err != nil {
 			t.Fatalf("test %d: error decoding: %v", i, err)
 		}
-		var got Container
+		var got vm.Container
 		if err := got.UnmarshalBinary(s, true); err != nil {
 			t.Fatalf("test %d: got error %v", i, err)
 		}

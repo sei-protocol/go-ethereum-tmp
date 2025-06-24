@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
@@ -229,13 +230,13 @@ func (api *DebugAPI) StorageRangeAt(ctx context.Context, blockNrOrHash rpc.Block
 	return storageRangeAt(statedb, block.Root(), contractAddress, keyStart, maxResult)
 }
 
-func storageRangeAt(statedb *state.StateDB, root common.Hash, address common.Address, start []byte, maxResult int) (StorageRangeResult, error) {
+func storageRangeAt(statedb vm.StateDB, root common.Hash, address common.Address, start []byte, maxResult int) (StorageRangeResult, error) {
 	storageRoot := statedb.GetStorageRoot(address)
 	if storageRoot == types.EmptyRootHash || storageRoot == (common.Hash{}) {
 		return StorageRangeResult{}, nil // empty storage
 	}
 	id := trie.StorageTrieID(root, crypto.Keccak256Hash(address.Bytes()), storageRoot)
-	tr, err := trie.NewStateTrie(id, statedb.Database().TrieDB())
+	tr, err := trie.NewStateTrie(id, statedb.(*state.StateDB).Database().TrieDB())
 	if err != nil {
 		return StorageRangeResult{}, err
 	}

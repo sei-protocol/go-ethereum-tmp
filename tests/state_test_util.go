@@ -321,7 +321,7 @@ func (t *StateTest) RunNoVerify(subtest StateSubtest, vmconfig vm.Config, snapsh
 		context.BlobBaseFee = eip4844.CalcBlobFee(config, header)
 	}
 
-	evm := vm.NewEVM(context, st.StateDB, config, vmconfig)
+	evm := vm.NewEVM(context, st.StateDB, config, vmconfig, nil)
 
 	if tracer := vmconfig.Tracer; tracer != nil && tracer.OnTxStart != nil {
 		tracer.OnTxStart(evm.GetVMContext(), nil, msg.From)

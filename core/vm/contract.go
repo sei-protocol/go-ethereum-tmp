@@ -31,8 +31,8 @@ type Contract struct {
 	caller  common.Address
 	address common.Address
 
-	jumpdests map[common.Hash]bitvec // Aggregated result of JUMPDEST analysis.
-	analysis  bitvec                 // Locally cached result of JUMPDEST analysis
+	jumpdests map[common.Hash]Bitvec // Aggregated result of JUMPDEST analysis.
+	analysis  Bitvec                 // Locally cached result of JUMPDEST analysis
 
 	Code     []byte
 	CodeHash common.Hash
@@ -47,10 +47,10 @@ type Contract struct {
 }
 
 // NewContract returns a new contract environment for the execution of EVM.
-func NewContract(caller common.Address, address common.Address, value *uint256.Int, gas uint64, jumpDests map[common.Hash]bitvec) *Contract {
+func NewContract(caller common.Address, address common.Address, value *uint256.Int, gas uint64, jumpDests map[common.Hash]Bitvec) *Contract {
 	// Initialize the jump analysis map if it's nil, mostly for tests
 	if jumpDests == nil {
-		jumpDests = make(map[common.Hash]bitvec)
+		jumpDests = make(map[common.Hash]Bitvec)
 	}
 	return &Contract{
 		caller:    caller,
@@ -91,7 +91,7 @@ func (c *Contract) isCode(udest uint64) bool {
 		if !exist {
 			// Do the analysis and save in parent context
 			// We do not need to store it in c.analysis
-			analysis = codeBitmap(c.Code)
+			analysis = CodeBitmap(c.Code)
 			c.jumpdests[c.CodeHash] = analysis
 		}
 		// Also stash it in current contract for faster access
@@ -103,7 +103,7 @@ func (c *Contract) isCode(udest uint64) bool {
 	// we don't have to recalculate it for every JUMP instruction in the execution
 	// However, we don't save it within the parent context
 	if c.analysis == nil {
-		c.analysis = codeBitmap(c.Code)
+		c.analysis = CodeBitmap(c.Code)
 	}
 	return c.analysis.codeSegment(udest)
 }

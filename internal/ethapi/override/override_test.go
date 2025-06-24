@@ -18,12 +18,14 @@ package override
 
 import (
 	"maps"
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/triedb"
@@ -33,7 +35,9 @@ type precompileContract struct{}
 
 func (p *precompileContract) RequiredGas(input []byte) uint64 { return 0 }
 
-func (p *precompileContract) Run(input []byte) ([]byte, error) { return nil, nil }
+func (p *precompileContract) Run(_ *vm.EVM, _ common.Address, _ common.Address, input []byte, _ *big.Int, _ bool, _ bool, _ *tracing.Hooks) ([]byte, error) {
+	return nil, nil
+}
 
 func TestStateOverrideMovePrecompile(t *testing.T) {
 	db := state.NewDatabase(triedb.NewDatabase(rawdb.NewMemoryDatabase(), nil), nil)

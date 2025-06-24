@@ -26,9 +26,9 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// openOptions contains the options to apply when opening a database.
+// OpenOptions contains the options to apply when opening a database.
 // OBS: If AncientsDirectory is empty, it indicates that no freezer is to be used.
-type openOptions struct {
+type OpenOptions struct {
 	Type              string // "leveldb" | "pebble"
 	Directory         string // the datadir
 	AncientsDirectory string // the ancients-dir
@@ -38,12 +38,12 @@ type openOptions struct {
 	ReadOnly          bool
 }
 
-// openDatabase opens both a disk-based key-value database such as leveldb or pebble, but also
+// OpenDatabase opens both a disk-based key-value database such as leveldb or pebble, but also
 // integrates it with a freezer database -- if the AncientDir option has been
 // set on the provided OpenOptions.
 // The passed o.AncientDir indicates the path of root ancient directory where
 // the chain freezer can be opened.
-func openDatabase(o openOptions) (ethdb.Database, error) {
+func OpenDatabase(o OpenOptions) (ethdb.Database, error) {
 	kvdb, err := openKeyValueDatabase(o)
 	if err != nil {
 		return nil, err
@@ -65,7 +65,7 @@ func openDatabase(o openOptions) (ethdb.Database, error) {
 //	                   +----------------------------------------
 //	db is non-existent |  pebble default  |  specified type
 //	db is existent     |  from db         |  specified type (if compatible)
-func openKeyValueDatabase(o openOptions) (ethdb.Database, error) {
+func openKeyValueDatabase(o OpenOptions) (ethdb.Database, error) {
 	// Reject any unsupported database type
 	if len(o.Type) != 0 && o.Type != rawdb.DBLeveldb && o.Type != rawdb.DBPebble {
 		return nil, fmt.Errorf("unknown db.engine %v", o.Type)
